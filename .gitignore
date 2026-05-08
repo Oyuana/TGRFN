@@ -1,7 +1,6 @@
 __pycache__/
 *.pyc
 
-data/
 datasets/
 checkpoints/
 weights/
@@ -15,6 +14,7 @@ runs/
 wandb/
 .cache/
 *.log
+
 # ignore pretrained experiment folders
 models/pre-trained/gossipcop/
 models/pre-trained/pheme/
@@ -22,8 +22,19 @@ models/pre-trained/politifact/
 
 # keep compressed files
 !models/pre-trained/*.rar
+
 # ignore ablation experiment outputs
 models/ablation/
 
 # ignore model checkpoints
 *.tar
+
+# ignore raw datasets
+data/fakenewsnet_dataset/
+data/GossipCop/
+data/PHEME/
+data/PolitiFact/
+
+# ignore processed data
+data/processed_data/
+data/rwr_results/
