@@ -1,0 +1,29 @@
+__pycache__/
+*.pyc
+
+data/
+datasets/
+checkpoints/
+weights/
+logs/
+runs/
+
+*.pt
+*.pth
+*.ckpt
+
+wandb/
+.cache/
+*.log
+# ignore pretrained experiment folders
+models/pre-trained/gossipcop/
+models/pre-trained/pheme/
+models/pre-trained/politifact/
+
+# keep compressed files
+!models/pre-trained/*.rar
+# ignore ablation experiment outputs
+models/ablation/
+
+# ignore model checkpoints
+*.tar

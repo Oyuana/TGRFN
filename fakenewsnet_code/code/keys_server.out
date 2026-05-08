@@ -1,0 +1,29 @@
+nohup: ignoring input
+No. of twitter keys : 1
+ * Serving Flask app "app" (lazy loading)
+ * Environment: production
+   WARNING: Do not use the development server in a production environment.
+   Use a production WSGI server instead.
+ * Debug mode: off
+Traceback (most recent call last):
+  File "/home/zhangrq/.pyenv/versions/3.8.5/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/home/zhangrq/.pyenv/versions/3.8.5/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/zhangrq/DPSG/fakenewsnet_code/code/resource_server/app.py", line 62, in <module>
+    app.run(host='0.0.0.0', debug=False)
+  File "/home/zhangrq/.pyenv/versions/3.8.5/envs/dpsg/lib/python3.8/site-packages/flask/app.py", line 943, in run
+    run_simple(host, port, self, **options)
+  File "/home/zhangrq/.pyenv/versions/3.8.5/envs/dpsg/lib/python3.8/site-packages/werkzeug/serving.py", line 1017, in run_simple
+    inner()
+  File "/home/zhangrq/.pyenv/versions/3.8.5/envs/dpsg/lib/python3.8/site-packages/werkzeug/serving.py", line 957, in inner
+    srv = make_server(
+  File "/home/zhangrq/.pyenv/versions/3.8.5/envs/dpsg/lib/python3.8/site-packages/werkzeug/serving.py", line 789, in make_server
+    return ThreadedWSGIServer(
+  File "/home/zhangrq/.pyenv/versions/3.8.5/envs/dpsg/lib/python3.8/site-packages/werkzeug/serving.py", line 693, in __init__
+    super().__init__(server_address, handler)  # type: ignore
+  File "/home/zhangrq/.pyenv/versions/3.8.5/lib/python3.8/socketserver.py", line 453, in __init__
+    self.server_activate()
+  File "/home/zhangrq/.pyenv/versions/3.8.5/lib/python3.8/socketserver.py", line 475, in server_activate
+    self.socket.listen(self.request_queue_size)
+OSError: [Errno 98] Address already in use
