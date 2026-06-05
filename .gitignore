@@ -29,7 +29,7 @@ models/ablation/
 # ignore model checkpoints
 *.tar
 
-# ignore raw datasets
+# ignore raw datasets only
 data/fakenewsnet_dataset/
 data/GossipCop/
 data/PHEME/
@@ -38,3 +38,9 @@ data/PolitiFact/
 # ignore processed data
 data/processed_data/
 data/rwr_results/
+
+# local files
+.vscode/
+
+# archives
+*.tar.gz
