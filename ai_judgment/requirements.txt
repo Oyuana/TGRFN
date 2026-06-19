@@ -1,0 +1,8 @@
+# AI 智能研判分析系统 —— 额外依赖（在项目根 requirements.txt 基础上）
+# 推理沿用项目已声明的 torch==2.1.0 / scipy / numpy，这里仅新增服务层依赖。
+fastapi==0.110.0
+uvicorn[standard]==0.29.0
+pydantic==2.6.4
+# LLM 接入（Module 2，按所选供应商二选一安装）：
+# anthropic>=0.39.0
+# openai>=1.30.0
