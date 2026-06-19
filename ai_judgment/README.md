@@ -4,8 +4,22 @@
 表示 vs 图结构表示的对齐距离）与**损失函数信号**（`loss_dis` / MSE），结合大
 语言模型生成普通用户可读的研判报告。
 
-> 本目录是 **Module 1（后端深度学习改造 + API 封装）** 的产出。Module 2（LLM
-> 提示词）、Module 3（接口契约）、Module 4（前端）按计划增量交付。
+> 本目录是 **Module 1（后端深度学习改造 + API 封装）** 的产出，配合 `prompts.py` /
+> `PROMPTS.md`（Module 2）、`API_CONTRACT.md`（Module 3）。
+>
+> **Module 4（前端）** 的正式落地基于仓库根目录下既有的可视化大屏页面
+> `index3.0_topnav_transparent_logo_final_logo_fixed (1).html`（单文件 HTML +
+> ECharts，无需构建步骤），而非另起一个独立的 React 工程。该页面在「研判界面」
+> 的「判定」「报告」标签页中新增了：
+> - 研判等级横幅（高危/存疑/安全，对齐 `internals.py` 阈值与结构冲突上调规则）
+> - 「调用后端 API 研判」按钮，按 `API_CONTRACT.md` 调用 `POST /api/analyze`，
+>   将真实 `metrics`/`report` 覆盖页面上的 Mock 演示数据，并在「报告」页展示完整
+>   LLM 文本报告（结论/证据/传播分析/建议）
+> - 启动时自动 `GET /health` 探活，展示"数据源：Mock"或"后端在线"状态
+>
+> 后端地址默认 `http://localhost:8000`；部署到其它地址时在浏览器控制台执行
+> `window.TGRFN_API_BASE = 'https://your-host:port'` 后刷新页面即可（`api.py` 已
+> 开启 `allow_origins=*` 的 CORS，无需额外配置）。
 
 ## 目录结构
 

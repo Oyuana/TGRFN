@@ -255,6 +255,14 @@
             font-size: 12px; line-height: 1.55; color: #c3d2dc; padding: 10px 12px; margin-bottom: 10px;
             border-left: 2px solid var(--accent-color); background: rgba(0,212,255,.03); border-radius: 0 4px 4px 0;
         }
+        .backend-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+        .backend-status { font-size: 10px; color: var(--neutral-color); white-space: nowrap; }
+        .backend-status.ok { color: var(--success-color); }
+        .backend-status.err { color: var(--danger-color); }
+        .backend-status.loading { color: var(--warning-color); }
+        .llm-report-box { font-size: 12px; line-height: 1.6; color: #c3d2dc; }
+        .llm-report-box h4 { font-size: 11px; color: var(--accent-color); margin: 10px 0 4px; }
+        .llm-report-box ul { margin: 0 0 0 16px; padding: 0; }
         .attitude-bar-container { margin: 13px 0; }
         .attitude-bar-label { font-size: 11px; color: var(--neutral-color); margin-bottom: 6px; display: flex; justify-content: space-between; }
         .attitude-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: rgba(255,255,255,0.05); box-shadow: inset 0 0 5px rgba(0,0,0,0.5); }
@@ -843,6 +851,10 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
                                 </div>
                             </div>
                             <div class="verdict-conclusion" id="verdict-conclusion">请选择案例后生成研判结论与风险等级。</div>
+                            <div class="backend-bar">
+                                <button class="mini-btn" id="backend-call-btn" onclick="callBackendAnalyze()">调用后端 API 研判</button>
+                                <span id="backend-status" class="backend-status">数据源：Mock</span>
+                            </div>
                             <div style="font-size: 11px; color: var(--accent-color); text-align:center; letter-spacing: 1px;">Fake 类预测概率</div>
                             <div class="prob-value" id="prob-val">0.0%</div>
                             <div class="attitude-bar-container">
@@ -873,7 +885,11 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
                             <div class="ai-summary">这些属于平台管理辅助功能，不作为 TGRFN 模型原生输出；报告中可归类为自研系统工程模块。</div>
                         </div>
                         <div class="right-tab" id="tab-report">
-                            <div class="ai-summary">
+                            <div class="llm-report-box" id="llm-report-box">
+                                <strong style="color:var(--accent-color);">[ 智能分析报告 ]</strong>
+                                <p style="color:#8899a6;margin:6px 0;">点击「判定」页的「调用后端 API 研判」获取大模型生成的研判报告（来源：<code>POST /api/analyze</code>）。当前展示为 Mock 占位文本。</p>
+                            </div>
+                            <div class="ai-summary" style="margin-top:10px;">
                                 <strong style="color:var(--accent-color);">[ 报告导出内容 ]</strong><br><br>
                                 案例基本信息、原始新闻链接、模型预测标签、Fake 概率、t→t+60 拓扑快照、数据集指标、接口来源声明。<br><br>
                                 <button class="header-btn" onclick="exportReport()">立即导出 PDF</button>
@@ -927,6 +943,86 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
     let currentMinute = 0;
     let playInterval;
 
+    // ===== 后端对接（Module 1-3 FastAPI 服务）=====
+    // 后端地址：本地开发默认 http://localhost:8000，已在 ai_judgment/api.py 开启 CORS（allow_origins=*）。
+    // 部署到其它地址时，在浏览器控制台执行 `window.TGRFN_API_BASE = 'https://your-host:port'` 后刷新即可，
+    // 或直接修改下面 API_BASE 常量。接口契约见 ai_judgment/API_CONTRACT.md。
+    const API_BASE = window.TGRFN_API_BASE || 'http://localhost:8000';
+    let backendReport = null; // 最近一次后端返回的 { metrics, report }，null 表示仍使用 Mock
+
+    function setBackendStatus(text, cls){
+        const el = document.getElementById('backend-status');
+        el.innerText = text;
+        el.className = 'backend-status' + (cls ? ' ' + cls : '');
+    }
+
+    async function callBackendAnalyze(){
+        const btn = document.getElementById('backend-call-btn');
+        btn.disabled = true;
+        setBackendStatus('调用中…', 'loading');
+        try {
+            const res = await fetch(`${API_BASE}/api/analyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ news_id: currentCase.id, with_report: true })
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.detail || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            backendReport = data;
+            applyBackendResult(data);
+            setBackendStatus(`数据源：远程 API（${data.elapsed_ms}ms）`, 'ok');
+        } catch (err) {
+            backendReport = null;
+            setBackendStatus('调用失败，已回退 Mock：' + err.message, 'err');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    function applyBackendResult(data){
+        const m = data.metrics, r = data.report;
+        // 用后端真实量化指标覆盖当前案例的展示字段（不修改 mock 拓扑/时间轴，仅替换研判结论相关数值）
+        currentCase.conflict = m.structural_conflict_index;
+        currentCase.conflictAlert = m.structural_conflict_alert;
+        currentCase.modality = m.modality_attention;
+        currentCase.dominant = m.dominant_modality;
+        const p = m.fake_probability;
+        renderVerdict(p, nearestWindow(currentMinute));
+        // LLM 报告覆盖结论文案
+        document.getElementById('verdict-conclusion').innerHTML =
+            `${r.Conclusion || ''}<br>关键依据：` + (r.Evidence || []).map(e => '• ' + e).join('；');
+        document.getElementById('prob-val').innerText = (p * 100).toFixed(1) + '%';
+        document.getElementById('pred-label').innerText = m.predicted_label === 'FAKE' ? 'Fake' : 'Real';
+        document.getElementById('pred-label').classList.toggle('danger', m.predicted_label === 'FAKE');
+        renderLlmReportBox(r);
+    }
+
+    function renderLlmReportBox(r){
+        const box = document.getElementById('llm-report-box');
+        box.innerHTML = `
+            <strong style="color:var(--accent-color);">[ 智能分析报告 · 来源 ${r._provider || '未知'} ]</strong>
+            <h4>综合结论</h4><p>${r.Conclusion || '-'}</p>
+            <h4>关键证据</h4><ul>${(r.Evidence || []).map(e => `<li>${e}</li>`).join('')}</ul>
+            <h4>传播链路分析</h4><p>${r.Propagation_Analysis || '-'}</p>
+            <h4>处置建议</h4><p>${r.Recommendation || '-'}</p>
+            ${r._error ? `<p style="color:var(--warning-color);">注：LLM 调用降级（${r._error}），以上为规则引擎兜底文本。</p>` : ''}
+        `;
+    }
+
+    async function checkBackendHealth(){
+        try {
+            const res = await fetch(`${API_BASE}/health`);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const h = await res.json();
+            setBackendStatus(`后端在线（${h.status}）`, h.status === 'ok' ? 'ok' : 'err');
+        } catch (err) {
+            setBackendStatus('数据源：Mock（后端未连接）', null);
+        }
+    }
+
     function switchView(id){
         document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
         document.querySelectorAll('.side-nav button').forEach(b => b.classList.toggle('active', b.dataset.view === id));
@@ -947,6 +1043,10 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
         if(!item) return;
         currentCase = item;
         currentMinute = 0;
+        backendReport = null;
+        setBackendStatus('数据源：Mock', null);
+        document.getElementById('llm-report-box').innerHTML =
+            '<strong style="color:var(--accent-color);">[ 智能分析报告 ]</strong><p style="color:#8899a6;margin:6px 0;">点击「判定」页的「调用后端 API 研判」获取大模型生成的研判报告（来源：<code>POST /api/analyze</code>）。当前展示为 Mock 占位文本。</p>';
         updateSourcePanel(item);
         startProcess(item);
         renderOverviewChart();
@@ -1057,7 +1157,7 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
     document.querySelectorAll('.tabbar button').forEach(btn => btn.onclick = () => { document.querySelectorAll('.tabbar button').forEach(b => b.classList.remove('active')); btn.classList.add('active'); document.querySelectorAll('.right-tab').forEach(t => t.classList.remove('active')); document.getElementById('tab-' + btn.dataset.tab).classList.add('active'); setTimeout(()=>curveChart.resize(), 50); });
     timeSlider.oninput = function(){ updateGraph(Number(this.value)); };
     window.onresize = () => { myChart.resize(); curveChart.resize(); overviewChart.resize(); };
-    renderCaseTable(); renderOverviewChart(); selectCase('GC-837');
+    renderCaseTable(); renderOverviewChart(); selectCase('GC-837'); checkBackendHealth();
 </script>
 </body>
 </html>
