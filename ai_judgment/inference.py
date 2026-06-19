@@ -107,11 +107,13 @@ class InferenceEngine:
         """
         【唯一集成点】把训练机的数据落盘格式装配成 DataBundle。
 
-        部署时在这里复用 GossipCop.py 里的 neighbor_loader / data_loader，
-        构建 model.DataStore 与各 node_id 的邻居顺序 / 时间戳。
-        默认返回 None —— 表示"数据未挂载"，API 会以 503 明确报错而非静默出错。
+        实现见 data_adapter.build_data_bundle()：复用 GossipCop.py 的
+        neighbor_loader / data_loader 格式，从 config 的 7 个路径环境变量装配。
+        路径未配置（或文件不存在）时返回 None —— 表示"数据未挂载"，API 会以
+        503 明确报错而非静默出错。
         """
-        return None
+        from .data_adapter import build_data_bundle
+        return build_data_bundle()
 
     @property
     def ready(self) -> bool:

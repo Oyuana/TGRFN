@@ -21,6 +21,23 @@ MODEL_CHECKPOINT_PATH = os.getenv(
 # 推理设备："cuda"/"cuda:0"/"cpu"；默认自动探测。
 DEVICE = os.getenv("TGRFN_DEVICE", "auto")
 
+# ---------------------------------------------------------------------------
+# 1b. 数据落盘路径（队员/学姐预处理产物，与 GossipCop.py 的加载格式一致）
+#     全部通过环境变量提供；任一为空则 load_data_bundle 视为"数据未挂载"。
+#     对应 GossipCop.py 中的：
+#       n_neighbors.txt   -> neighbor_loader(...)              (GossipCop.py:108)
+#       original_adj      -> json.load -> adj_list             (GossipCop.py:110)
+#       n_add_time.txt / p_add_time.txt -> 时间戳字典           (GossipCop.py:36/42)
+#       normalized_news_nodes/ post/ user/ -> data_loader(...) (GossipCop.py:208-210)
+# ---------------------------------------------------------------------------
+DATA_NEIGHBORS_FILE = os.getenv("TGRFN_NEIGHBORS_FILE", "")     # n_neighbors.txt
+DATA_ADJ_FILE       = os.getenv("TGRFN_ADJ_FILE", "")          # original_adj
+DATA_N_TIME_FILE    = os.getenv("TGRFN_N_TIME_FILE", "")       # n_add_time.txt
+DATA_P_TIME_FILE    = os.getenv("TGRFN_P_TIME_FILE", "")       # p_add_time.txt
+DATA_NEWS_DIR       = os.getenv("TGRFN_NEWS_DIR", "")          # normalized_news_nodes/
+DATA_POST_DIR       = os.getenv("TGRFN_POST_DIR", "")          # normalized_post_nodes/
+DATA_USER_DIR       = os.getenv("TGRFN_USER_DIR", "")          # normalized_user_nodes/
+
 # DPSG 构造超参（与 GossipCop.py 训练时保持一致，见 GossipCop.py:1016-1020）
 MODEL_HPARAMS = {
     "input_dim": [768, 512, 3, 29],
