@@ -223,6 +223,38 @@
         .right-tab { display: none; min-height: 0; }
         .right-tab.active { display: flex; flex-direction: column; flex: 1; min-height: 0; }
         .prob-value { font-size: 40px; font-weight: bold; color: var(--danger-color); text-align: center; margin: 4px 0; text-shadow: 0 0 15px rgba(255, 77, 79, 0.6); font-family: 'Consolas', monospace; }
+        /* ===== 研判等级 / 结论区 ===== */
+        .verdict-banner {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            padding: 12px 14px; border-radius: 6px; margin-bottom: 10px;
+            border: 1px solid var(--border-color); background: rgba(0,212,255,.04);
+            transition: .3s; position: relative; overflow: hidden;
+        }
+        .verdict-banner::before {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--neutral-color);
+        }
+        .verdict-banner.level-high   { border-color: rgba(255,77,79,.55); background: rgba(255,77,79,.08); box-shadow: 0 0 18px rgba(255,77,79,.12); }
+        .verdict-banner.level-high::before   { background: var(--danger-color); box-shadow: 0 0 12px var(--danger-color); }
+        .verdict-banner.level-mid    { border-color: rgba(250,173,20,.5); background: rgba(250,173,20,.08); }
+        .verdict-banner.level-mid::before    { background: var(--warning-color); box-shadow: 0 0 12px var(--warning-color); }
+        .verdict-banner.level-safe   { border-color: rgba(82,196,26,.5); background: rgba(82,196,26,.08); }
+        .verdict-banner.level-safe::before   { background: var(--success-color); box-shadow: 0 0 12px var(--success-color); }
+        .verdict-left { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+        .verdict-level-tag {
+            font-size: 20px; font-weight: bold; letter-spacing: 3px; line-height: 1;
+            color: var(--neutral-color); text-shadow: 0 0 10px currentColor;
+        }
+        .verdict-banner.level-high  .verdict-level-tag { color: var(--danger-color); }
+        .verdict-banner.level-mid   .verdict-level-tag { color: var(--warning-color); }
+        .verdict-banner.level-safe  .verdict-level-tag { color: var(--success-color); }
+        .verdict-sub { font-size: 10px; color: rgba(224,230,237,.55); letter-spacing: .5px; }
+        .verdict-meta { display: flex; gap: 14px; flex: 0 0 auto; }
+        .verdict-meta-item { display: flex; flex-direction: column; align-items: flex-end; font-size: 9px; color: var(--neutral-color); gap: 2px; }
+        .verdict-meta-item b { font-size: 12px; color: var(--accent-color); font-family: 'Consolas', monospace; }
+        .verdict-conclusion {
+            font-size: 12px; line-height: 1.55; color: #c3d2dc; padding: 10px 12px; margin-bottom: 10px;
+            border-left: 2px solid var(--accent-color); background: rgba(0,212,255,.03); border-radius: 0 4px 4px 0;
+        }
         .attitude-bar-container { margin: 13px 0; }
         .attitude-bar-label { font-size: 11px; color: var(--neutral-color); margin-bottom: 6px; display: flex; justify-content: space-between; }
         .attitude-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: rgba(255,255,255,0.05); box-shadow: inset 0 0 5px rgba(0,0,0,0.5); }
@@ -800,6 +832,17 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
                     </div>
                     <div class="right-content" id="results-panel">
                         <div class="right-tab active" id="tab-result">
+                            <div class="verdict-banner" id="verdict-banner">
+                                <div class="verdict-left">
+                                    <div class="verdict-level-tag" id="verdict-level">研判等级</div>
+                                    <div class="verdict-sub" id="verdict-sub">等待研判…</div>
+                                </div>
+                                <div class="verdict-meta">
+                                    <div class="verdict-meta-item"><span>结构冲突</span><b id="verdict-conflict">-</b></div>
+                                    <div class="verdict-meta-item"><span>主导模态</span><b id="verdict-modality">-</b></div>
+                                </div>
+                            </div>
+                            <div class="verdict-conclusion" id="verdict-conclusion">请选择案例后生成研判结论与风险等级。</div>
                             <div style="font-size: 11px; color: var(--accent-color); text-align:center; letter-spacing: 1px;">Fake 类预测概率</div>
                             <div class="prob-value" id="prob-val">0.0%</div>
                             <div class="attitude-bar-container">
@@ -867,9 +910,9 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
 
 <script>
     const cases = [
-        { id: 'GC-837', dataset: 'GossipCop', title: '教皇方济各公开支持特朗普竞选', trueLabel: 'Fake', sourceUrl: 'https://example.com/original/gossipcop-837', archiveUrl: 'https://web.archive.org/', text: '源新闻摘要：社交平台传播“教皇方济各公开支持特朗普竞选”的新闻，该样本用于展示数据集原始链接回看与模型判定结果。', tags: ['政治选举','原始链接','多模态样本'], probs: {0:.54,20:.63,40:.78,60:.91}, stance: {support: 22, user: 18, doubt: 60}, nodes: [ {id:'n0', name:'新闻源', type:'source', t:0, size:42}, {id:'p1', name:'评论1', type:'post', t:5, size:15}, {id:'u1', name:'U1', type:'user', t:5, size:12}, {id:'p2', name:'转发1', type:'post', t:10, size:14}, {id:'u2', name:'U2', type:'user', t:10, size:12}, {id:'p3', name:'质疑1', type:'doubt', t:18, size:18}, {id:'u3', name:'U3', type:'user', t:18, size:12}, {id:'p4', name:'质疑2', type:'doubt', t:26, size:18}, {id:'p5', name:'评论2', type:'post', t:34, size:14}, {id:'p6', name:'二级传播', type:'doubt', t:50, size:18}, {id:'p7', name:'聚集节点', type:'doubt', t:60, size:21} ], edges: [['n0','p1'],['u1','p1'],['n0','p2'],['u2','p2'],['n0','p3'],['u3','p3'],['p3','p4'],['n0','p5'],['p4','p6'],['p6','p7']] },
-        { id: 'PF-204', dataset: 'PolitiFact', title: '某公共政策相关新闻在社交平台传播', trueLabel: 'Real', sourceUrl: 'https://example.com/original/politifact-204', archiveUrl: 'https://web.archive.org/', text: '源新闻摘要：该样本用于展示低风险/真实新闻在早期传播窗口中的稳定拓扑。', tags: ['公共政策','低风险','文本样本'], probs: {0:.24,20:.29,40:.26,60:.21}, stance: {support: 52, user: 30, doubt: 18}, nodes: [ {id:'n0', name:'新闻源', type:'source', t:0, size:42}, {id:'p1', name:'回复1', type:'post', t:9, size:14}, {id:'u1', name:'U1', type:'user', t:9, size:12}, {id:'p2', name:'转发1', type:'post', t:22, size:14}, {id:'u2', name:'U2', type:'user', t:22, size:12}, {id:'p3', name:'评论2', type:'post', t:48, size:15} ], edges: [['n0','p1'],['u1','p1'],['n0','p2'],['u2','p2'],['n0','p3']] },
-        { id: 'PHEME-992', dataset: 'PHEME', title: '最新研究：mRNA疫苗会导致人体基因永久变异', trueLabel: 'Fake', sourceUrl: 'https://example.com/original/pheme-992', archiveUrl: 'https://web.archive.org/', text: '源推文摘要：公共卫生相关谣言样本，传播过程中出现大量质疑与二级扩散节点。', tags: ['公共卫生','早期检测','PHEME'], probs: {0:.47,20:.58,40:.73,60:.86}, stance: {support: 19, user: 24, doubt: 57}, nodes: [ {id:'n0', name:'新闻源', type:'source', t:0, size:42}, {id:'p1', name:'回复1', type:'post', t:3, size:14}, {id:'u1', name:'U1', type:'user', t:3, size:12}, {id:'p2', name:'转推1', type:'post', t:8, size:14}, {id:'p3', name:'质疑1', type:'doubt', t:16, size:18}, {id:'u2', name:'U2', type:'user', t:16, size:12}, {id:'p4', name:'质疑2', type:'doubt', t:25, size:18}, {id:'p5', name:'转推2', type:'post', t:36, size:15}, {id:'u3', name:'U3', type:'user', t:36, size:12}, {id:'p6', name:'二级传播', type:'doubt', t:50, size:18}, {id:'p7', name:'聚集节点', type:'doubt', t:60, size:21} ], edges: [['n0','p1'],['u1','p1'],['n0','p2'],['n0','p3'],['u2','p3'],['p3','p4'],['n0','p5'],['u3','p5'],['p4','p6'],['p6','p7']] }
+        { id: 'GC-837', dataset: 'GossipCop', title: '教皇方济各公开支持特朗普竞选', trueLabel: 'Fake', sourceUrl: 'https://example.com/original/gossipcop-837', archiveUrl: 'https://web.archive.org/', text: '源新闻摘要：社交平台传播“教皇方济各公开支持特朗普竞选”的新闻，该样本用于展示数据集原始链接回看与模型判定结果。', tags: ['政治选举','原始链接','多模态样本'], probs: {0:.54,20:.63,40:.78,60:.91}, stance: {support: 22, user: 18, doubt: 60}, conflict: 0.82, conflictAlert: true, modality: {text: 0.18, image: 0.66, time: 0.16}, dominant: 'image', nodes: [ {id:'n0', name:'新闻源', type:'source', t:0, size:42}, {id:'p1', name:'评论1', type:'post', t:5, size:15}, {id:'u1', name:'U1', type:'user', t:5, size:12}, {id:'p2', name:'转发1', type:'post', t:10, size:14}, {id:'u2', name:'U2', type:'user', t:10, size:12}, {id:'p3', name:'质疑1', type:'doubt', t:18, size:18}, {id:'u3', name:'U3', type:'user', t:18, size:12}, {id:'p4', name:'质疑2', type:'doubt', t:26, size:18}, {id:'p5', name:'评论2', type:'post', t:34, size:14}, {id:'p6', name:'二级传播', type:'doubt', t:50, size:18}, {id:'p7', name:'聚集节点', type:'doubt', t:60, size:21} ], edges: [['n0','p1'],['u1','p1'],['n0','p2'],['u2','p2'],['n0','p3'],['u3','p3'],['p3','p4'],['n0','p5'],['p4','p6'],['p6','p7']] },
+        { id: 'PF-204', dataset: 'PolitiFact', title: '某公共政策相关新闻在社交平台传播', trueLabel: 'Real', sourceUrl: 'https://example.com/original/politifact-204', archiveUrl: 'https://web.archive.org/', text: '源新闻摘要：该样本用于展示低风险/真实新闻在早期传播窗口中的稳定拓扑。', tags: ['公共政策','低风险','文本样本'], probs: {0:.24,20:.29,40:.26,60:.21}, stance: {support: 52, user: 30, doubt: 18}, conflict: 0.21, conflictAlert: false, modality: {text: 0.62, image: 0.2, time: 0.18}, dominant: 'text', nodes: [ {id:'n0', name:'新闻源', type:'source', t:0, size:42}, {id:'p1', name:'回复1', type:'post', t:9, size:14}, {id:'u1', name:'U1', type:'user', t:9, size:12}, {id:'p2', name:'转发1', type:'post', t:22, size:14}, {id:'u2', name:'U2', type:'user', t:22, size:12}, {id:'p3', name:'评论2', type:'post', t:48, size:15} ], edges: [['n0','p1'],['u1','p1'],['n0','p2'],['u2','p2'],['n0','p3']] },
+        { id: 'PHEME-992', dataset: 'PHEME', title: '最新研究：mRNA疫苗会导致人体基因永久变异', trueLabel: 'Fake', sourceUrl: 'https://example.com/original/pheme-992', archiveUrl: 'https://web.archive.org/', text: '源推文摘要：公共卫生相关谣言样本，传播过程中出现大量质疑与二级扩散节点。', tags: ['公共卫生','早期检测','PHEME'], probs: {0:.47,20:.58,40:.73,60:.86}, stance: {support: 19, user: 24, doubt: 57}, conflict: 0.71, conflictAlert: true, modality: {text: 0.22, image: 0.2, time: 0.58}, dominant: 'time', nodes: [ {id:'n0', name:'新闻源', type:'source', t:0, size:42}, {id:'p1', name:'回复1', type:'post', t:3, size:14}, {id:'u1', name:'U1', type:'user', t:3, size:12}, {id:'p2', name:'转推1', type:'post', t:8, size:14}, {id:'p3', name:'质疑1', type:'doubt', t:16, size:18}, {id:'u2', name:'U2', type:'user', t:16, size:12}, {id:'p4', name:'质疑2', type:'doubt', t:25, size:18}, {id:'p5', name:'转推2', type:'post', t:36, size:15}, {id:'u3', name:'U3', type:'user', t:36, size:12}, {id:'p6', name:'二级传播', type:'doubt', t:50, size:18}, {id:'p7', name:'聚集节点', type:'doubt', t:60, size:21} ], edges: [['n0','p1'],['u1','p1'],['n0','p2'],['n0','p3'],['u2','p3'],['p3','p4'],['n0','p5'],['u3','p5'],['p4','p6'],['p6','p7']] }
     ];
 
     const chartDom = document.getElementById('chart-dom');
@@ -951,7 +994,46 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
         document.getElementById('attitude-text').innerText = `高关注/质疑 ${currentCase.stance.doubt}%`;
         const summary = pred === 'Fake' ? `模型在 ${w===0?'t':('t+'+w)} 窗口倾向判定为 Fake。请注意：该结论表示传播风险研判，不等于事实核查结论。建议审核员打开原始链接核验来源。` : `模型在 ${w===0?'t':('t+'+w)} 窗口倾向判定为 Real。建议保留观察，必要时结合原始链接进行人工核验。`;
         document.getElementById('summary-box').innerHTML = `<strong style="color:var(--accent-color);">[ 研判结论 ]</strong><br><br>${summary}`;
+        renderVerdict(p, w);
         renderCurve(); fillPrintReport(p, pred);
+    }
+    // ===== 研判等级 / 结论区 =====
+    // 等级规则与后端 internals.py 阈值一致：>=0.65 高危 / >=0.35 存疑 / 否则 安全。
+    // 触发结构冲突告警时等级上调一档（与后端 preliminary_risk_level 规则对齐）。
+    const MODALITY_CN = { text: '文本', image: '图像', time: '时间' };
+    function renderVerdict(p, w){
+        const c = currentCase;
+        let level, cls, advice;
+        if (p >= 0.65) { level = '高危'; cls = 'level-high'; }
+        else if (p >= 0.35) { level = '存疑'; cls = 'level-mid'; }
+        else { level = '安全'; cls = 'level-safe'; }
+        // 结构冲突告警上调一档
+        if (c.conflictAlert && level === '安全') { level = '存疑'; cls = 'level-mid'; }
+        else if (c.conflictAlert && level === '存疑') { level = '高危'; cls = 'level-high'; }
+
+        const banner = document.getElementById('verdict-banner');
+        banner.className = 'verdict-banner ' + cls;
+        document.getElementById('verdict-level').innerText = level;
+        document.getElementById('verdict-sub').innerText =
+            `${c.dataset} · ${c.id} · ${w===0?'t':('t+'+w)} 窗口 · Fake 概率 ${(p*100).toFixed(0)}%`;
+        document.getElementById('verdict-conflict').innerText =
+            (c.conflict!=null ? c.conflict.toFixed(2) : '-') + (c.conflictAlert ? ' ⚠' : '');
+        const dom = c.dominant ? (MODALITY_CN[c.dominant] || c.dominant) : '-';
+        const domPct = (c.modality && c.dominant) ? ` ${(c.modality[c.dominant]*100).toFixed(0)}%` : '';
+        document.getElementById('verdict-modality').innerText = dom + domPct;
+
+        // 一句话结论 + 证据要点
+        const evid = [];
+        if (c.conflictAlert) evid.push('内容与传播图结构显著冲突，疑似水军操纵 / 异常传播图谱');
+        if (c.dominant === 'image' && c.modality.image >= 0.6) evid.push('视觉特征注意力异常占比，疑似图像篡改');
+        if (c.dominant === 'time' && c.modality.time >= 0.55) evid.push('时间注意力主导，呈典型谣言爆发式时间衰减');
+        const visible = currentCase.nodes.filter(n => n.t <= currentMinute).length;
+        if (visible < 10) evid.push(`当前传播节点 ${visible} 个，处于早期/稀疏阶段，置信度下调，建议持续监测`);
+        const head = level === '安全'
+            ? `模型综合研判为「${level}」，暂未发现明显异常传播特征。`
+            : `模型综合研判为「${level}」，Fake 风险 ${(p*100).toFixed(0)}%。`;
+        document.getElementById('verdict-conclusion').innerHTML =
+            head + (evid.length ? '<br>关键依据：' + evid.map(e=>'① '+e).join('；').replace(/①/g,'•') : '');
     }
     function renderCurve(){
         curveChart.setOption({ grid:{ left:34, right:12, top:20, bottom:28 }, xAxis:{ type:'category', data:['t','t+20','t+40','t+60'], axisLabel:{color:'#8899a6'}, axisLine:{lineStyle:{color:'rgba(0,212,255,.25)'}} }, yAxis:{ type:'value', min:0, max:1, axisLabel:{color:'#8899a6'}, splitLine:{lineStyle:{color:'rgba(0,212,255,.08)'}} }, series:[{ type:'line', smooth:true, data:[currentCase.probs[0],currentCase.probs[20],currentCase.probs[40],currentCase.probs[60]], symbolSize:8, itemStyle:{ color:'#00d4ff' }, lineStyle:{ color:'#00d4ff', width:2 }, areaStyle:{ color:'rgba(0,212,255,.12)' } }] });
