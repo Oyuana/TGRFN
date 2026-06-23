@@ -44,3 +44,5 @@ data/rwr_results/
 
 # archives
 *.tar.gz
+# AI 研判 LLM 报告缓存（运行时生成，不入库）
+ai_judgment/_report_cache/
