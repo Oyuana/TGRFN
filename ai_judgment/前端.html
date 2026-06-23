@@ -271,8 +271,8 @@
 
         /* ===== 研判等级 / 结论区 ===== */
         .verdict-banner {
-            display: flex; align-items: center; justify-content: space-between; gap: 10px;
-            padding: 12px 14px; border-radius: 6px; margin-bottom: 10px;
+            display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
+            padding: 10px 12px 10px 15px; border-radius: 6px; margin-bottom: 10px;
             border: 1px solid var(--border-color); background: rgba(0,212,255,.04);
             transition: .3s; position: relative; overflow: hidden;
         }
@@ -285,18 +285,22 @@
         .verdict-banner.level-mid::before    { background: var(--warning-color); box-shadow: 0 0 12px var(--warning-color); }
         .verdict-banner.level-safe   { border-color: rgba(82,196,26,.5); background: rgba(82,196,26,.08); }
         .verdict-banner.level-safe::before   { background: var(--success-color); box-shadow: 0 0 12px var(--success-color); }
-        .verdict-left { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+        .verdict-left { display: flex; flex-direction: column; gap: 3px; flex: 1 1 130px; min-width: 0; }
         .verdict-level-tag {
-            font-size: 20px; font-weight: bold; letter-spacing: 3px; line-height: 1;
+            font-size: 18px; font-weight: bold; letter-spacing: 2px; line-height: 1.1; white-space: nowrap;
             color: var(--neutral-color); text-shadow: 0 0 10px currentColor;
         }
         .verdict-banner.level-high  .verdict-level-tag { color: var(--danger-color); }
         .verdict-banner.level-mid   .verdict-level-tag { color: var(--warning-color); }
         .verdict-banner.level-safe  .verdict-level-tag { color: var(--success-color); }
-        .verdict-sub { font-size: 10px; color: rgba(224,230,237,.55); letter-spacing: .5px; }
-        .verdict-meta { display: flex; gap: 14px; flex: 0 0 auto; }
-        .verdict-meta-item { display: flex; flex-direction: column; align-items: flex-end; font-size: 9px; color: var(--neutral-color); gap: 2px; }
-        .verdict-meta-item b { font-size: 12px; color: var(--accent-color); font-family: 'Consolas', monospace; }
+        .verdict-sub { font-size: 10px; color: rgba(224,230,237,.6); letter-spacing: .3px; line-height: 1.45; word-break: break-word; }
+        .verdict-meta { display: flex; flex-wrap: wrap; gap: 6px; flex: 0 0 auto; }
+        .verdict-meta-item {
+            display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+            font-size: 9px; color: var(--neutral-color); line-height: 1.25;
+            padding: 3px 8px; border-radius: 4px; background: rgba(0,212,255,.05); border: 1px solid rgba(0,212,255,.12);
+        }
+        .verdict-meta-item b { font-size: 12px; color: var(--accent-color); font-family: 'Consolas', monospace; white-space: nowrap; }
         .verdict-conclusion {
             font-size: 12px; line-height: 1.55; color: #c3d2dc; padding: 10px 12px; margin-bottom: 10px;
             border-left: 2px solid var(--accent-color); background: rgba(0,212,255,.03); border-radius: 0 4px 4px 0;
@@ -1442,7 +1446,7 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
         const banner = document.getElementById('verdict-banner');
         banner.className = 'verdict-banner ' + cls;
         document.getElementById('verdict-level').innerText = level;
-        document.getElementById('verdict-sub').innerText = `${a.case.dataset} · ${a.case.case_id} · 模型预测 ${p.available ? labelCn(p.pred_label) : 'unavailable'} · 真实标签 ${labelCn(a.case.ground_truth)}`;
+        document.getElementById('verdict-sub').innerText = `${a.case.dataset} · ${a.case.case_id}`;
 
         // 头部两项要点：结构冲突指数 + 主导模态（直接取自量化指标）
         const conflictEl = document.getElementById('verdict-conflict');
