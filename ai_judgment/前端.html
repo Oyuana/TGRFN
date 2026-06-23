@@ -743,7 +743,7 @@
             <div class="page-wrap">
                 <div class="grid grid-4">
                     <div class="overview-card"><div class="label">已导入案例</div><div class="num" id="overview-case-count">3</div><div class="desc">来自公开数据集 / 离线案例包</div></div>
-                    <div class="overview-card"><div class="label">高风险预测</div><div class="num danger">2</div><div class="desc">Fake 概率高于 0.5 的样本</div></div>
+                    <div class="overview-card"><div class="label">高风险预测</div><div class="num danger" id="overview-highrisk-count">-</div><div class="desc">模型预测为虚假的案例数</div></div>
                     <div class="overview-card"><div class="label">平均响应</div><div class="num">0.42s</div><div class="desc">离线结果 / 缓存模式展示</div></div>
                     <div class="overview-card"><div class="label">原始链接覆盖</div><div class="num">92%</div><div class="desc">可打开源网页或 Wayback 归档</div></div>
                 </div>
@@ -966,234 +966,13 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
 </div>
 
 
-<!-- ===================================================================
-     内置演示数据 (Embedded Demo Data)
-     无需后端：直接打开本 HTML 即可展示完整研判链路与详细 AI 研判报告。
-     若部署了真实后端，fetchJson 会优先使用后端，失败时自动回退到这里。
-     =================================================================== -->
 <script>
-(function () {
-    'use strict';
-
-    // —— 可复现的伪随机数（保证每次打开拓扑一致）——
-    function makeRng(seed) {
-        let s = seed >>> 0;
-        return function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
-    }
-
-    // —— 传播图生成：把案例画像渲染成随时间演化的节点 / 边 ——
-    function buildGraph(profile) {
-        const rng = makeRng(profile.seed || 7);
-        const maxSec = profile.max_seconds || 3600;
-        const nodes = [{ id: 's0', label: profile.short || 'SRC', node_type: 'source', x: 0, y: 0, size: 36, relative_seconds: 0 }];
-        const edges = [];
-        const typePool = profile.types || ['post', 'user', 'post', 'user', 'news'];
-
-        // 生成传播时间戳：协同操纵案例制造"同时爆发"的时间簇
-        function genTime(i, n) {
-            if (profile.coordinated) {
-                const bursts = [0.04, 0.07, 0.10, 0.34, 0.38];     // 几个集中爆发点
-                const b = bursts[i % bursts.length];
-                return Math.min(maxSec, Math.round(maxSec * (b + (rng() - 0.5) * 0.015)));
-            }
-            // 自然传播：早密晚疏的次线性增长
-            const t = Math.pow(i / n, profile.sparse ? 1.4 : 0.8);
-            return Math.round(maxSec * Math.min(1, t * (0.85 + rng() * 0.3)));
-        }
-
-        const n = profile.nodes;
-        for (let i = 1; i <= n; i++) {
-            const type = typePool[i % typePool.length];
-            const sec = genTime(i, n);
-            const ring = 80 + (sec / maxSec) * 520 + rng() * 60;   // 越晚出现越外圈 → 视觉上"扩散"
-            const ang = rng() * Math.PI * 2;
-            const baseSize = type === 'news' ? 18 : 9 + rng() * 7;
-            nodes.push({
-                id: 'n' + i,
-                label: (type === 'news' ? 'N' : type === 'user' ? 'U' : 'P') + (1000 + Math.floor(rng() * 8999)),
-                node_type: type,
-                x: Math.round(Math.cos(ang) * ring),
-                y: Math.round(Math.sin(ang) * ring),
-                size: Math.round(baseSize),
-                relative_seconds: sec
-            });
-        }
-
-        // 传播树边：每个节点挂到一个更早出现的节点上
-        const sorted = nodes.slice().sort((a, b) => (a.relative_seconds || 0) - (b.relative_seconds || 0));
-        for (let i = 1; i < sorted.length; i++) {
-            const child = sorted[i];
-            const parent = sorted[Math.floor(rng() * i)];
-            edges.push({ source: parent.id, target: child.id, relation_type: 'explicit', relative_seconds: child.relative_seconds });
-        }
-        // 协同操纵：在时间簇内追加"非自然"的横向增强边（前端以虚线表示潜在异常关系）
-        let enhanced = 0;
-        if (profile.coordinated) {
-            const clustered = sorted.filter(nd => nd.node_type !== 'source');
-            for (let i = 0; i < clustered.length - 1; i++) {
-                if (Math.abs((clustered[i].relative_seconds || 0) - (clustered[i + 1].relative_seconds || 0)) < maxSec * 0.012 && rng() < 0.55) {
-                    edges.push({ source: clustered[i].id, target: clustered[i + 1].id, relation_type: 'enhanced', relative_seconds: clustered[i + 1].relative_seconds });
-                    enhanced++;
-                }
-            }
-        }
-
-        // 时间轴累计统计（曲线图用）
-        const timeline_stats = [];
-        const steps = 14;
-        for (let k = 0; k <= steps; k++) {
-            const t = Math.round((maxSec * k) / steps);
-            timeline_stats.push({
-                relative_seconds: t,
-                visible_node_count: nodes.filter(nd => (nd.relative_seconds || 0) <= t).length,
-                visible_edge_count: edges.filter(e => (e.relative_seconds || 0) <= t).length
-            });
-        }
-
-        return {
-            nodes: nodes,
-            edges: edges,
-            time_range: { min_seconds: 0, max_seconds: maxSec },
-            timeline_stats: timeline_stats,
-            playback_mode: 'real_time',
-            _explicit: edges.length - enhanced,
-            _enhanced: enhanced
-        };
-    }
-
-    // —— 案例画像 + 量化指标 + 详细 AI 研判报告 ——
-    const PROFILES = {
-        'gossipcop-847028': {
-            case: {
-                case_id: 'gossipcop-847028', dataset: 'GossipCop',
-                title: '某顶流明星"秘密住院抢救"图文疯传',
-                ground_truth: 'fake', source_url: 'gossipcop.com/story/847028', image_url: '',
-                publish_time: 1718000000, timestamp_mode: '真实时间', graph_nodes: 59, graph_edges: 84
-            },
-            prediction: { available: true, pred_label: 'fake', fake_probability: 0.91, real_probability: 0.09, threshold: 0.5 },
-            graph: { seed: 21, nodes: 58, max_seconds: 3600, coordinated: true, types: ['post', 'user', 'post', 'user', 'post', 'news'] },
-            metrics: {
-                fake_probability: 0.91, model_raw_score: 0.09, decision_margin: -2.31, predicted_label: 'FAKE', ratio_baseline: 1.0,
-                structural_conflict_index: 0.93, structural_conflict_alert: true,
-                modality_attention: { text: 0.11, image: 0.78, time: 0.11 }, dominant_modality: 'image', modality_dominance_alert: true,
-                num_neighbors: 58, sparse_propagation: false, preliminary_risk_level: 'HIGH_RISK', confidence: 0.88
-            },
-            report: {
-                Risk_Level: '高危',
-                Conclusion: '模型判别本条新闻为「虚假」，校准后假新闻风险 91%，量化置信度 88%。传播图结构与内容语义出现严重冲突（结构冲突指数 0.93），且视觉模态注意力异常占优（78%），呈现典型的"配图造假 + 协同放大"特征。',
-                Evidence: [
-                    '判别依据：判别间隔 decision_margin = −2.31（< 0 明显偏向虚假），经训练集正负样本比 ratio = 1.0 校准后，假新闻风险高达 91%，远离决策边界，结论稳健。',
-                    '结构冲突告警：内容↔传播图结构冲突指数 0.93，大幅超过 0.50 告警线——新闻文本本身平平无奇，但其转发/互动结构高度非自然，是水军操纵 / 异常传播图谱的强信号。',
-                    '视觉模态异常：三模态注意力为 文本 11% / 视觉 78% / 时间 11%，由视觉模态主导判别，提示配图存在篡改、张冠李戴或 AI 合成嫌疑，应优先做反向图搜溯源。',
-                    '协同传播形态：58 个传播邻居中检测到多个"同一时刻集中爆发"的账号簇，并伴随大量横向增强边，符合刷量账号在短窗口内统一行动的特征。',
-                    '传播规模充分：邻居节点数 58，远高于稀疏阈值 10，统计意义稳定，结论不因样本不足而打折。'
-                ],
-                Propagation_Analysis: '本案例共聚合 58 个传播邻居节点参与研判，传播规模充分。结构冲突指数高达 0.93，模型在"内容语义表示"与"传播图结构表示"之间检测到严重不对齐——即一条本应平淡的娱乐消息，却获得了高度协同、非自然的转发结构：拓扑演化中可见在 t+2、t+4、t+20 等多个时间点出现节点集中爆发，账号之间还存在大量横向增强关系边，这正是水军 / 营销号集群在短时间窗口内统一刷量的典型形态。从模态看，视觉特征贡献异常突出（78%），存在图像篡改或移花接木的高度嫌疑，建议对配图做反向溯源与篡改检测。综合来看，内容、传播结构、配图三个维度的异常相互印证，构成一条完整的造假证据链。',
-                Recommendation: '总体口径：高度警惕，请勿转发扩散，并建议触发平台限流 / 打标。具体动作：① 立即交内容安全团队人工复核并固定证据；② 追踪"集中爆发"时间簇内的账号集群，排查是否为同一控制方批量操作；③ 对涉事配图做反向图搜与篡改/合成检测，定位原始出处。',
-                metrics: null, _provider: 'mock'
-            }
-        },
-        'politifact-13245': {
-            case: {
-                case_id: 'politifact-13245', dataset: 'PolitiFact',
-                title: '"某市今晚紧急封城"消息于深夜突然扩散',
-                ground_truth: 'fake', source_url: 'politifact.com/factchecks/13245', image_url: '',
-                publish_time: 1718200000, timestamp_mode: '真实时间', graph_nodes: 9, graph_edges: 8
-            },
-            prediction: { available: true, pred_label: 'fake', fake_probability: 0.62, real_probability: 0.38, threshold: 0.5 },
-            graph: { seed: 9, nodes: 8, max_seconds: 1800, sparse: true, types: ['post', 'user', 'post', 'user'] },
-            metrics: {
-                fake_probability: 0.62, model_raw_score: 0.38, decision_margin: -0.49, predicted_label: 'FAKE', ratio_baseline: 1.0,
-                structural_conflict_index: 0.34, structural_conflict_alert: false,
-                modality_attention: { text: 0.22, image: 0.18, time: 0.60 }, dominant_modality: 'time', modality_dominance_alert: true,
-                num_neighbors: 7, sparse_propagation: true, preliminary_risk_level: 'SUSPICIOUS', confidence: 0.48
-            },
-            report: {
-                Risk_Level: '存疑',
-                Conclusion: '模型倾向判别为「虚假」，校准后假新闻风险 62%，但量化置信度仅 48%。原因是当前处于早期 / 稀疏传播阶段（仅 7 个邻居节点），同时时间模态注意力异常占优（60%），呈现谣言式的爆发型时间形态，需结合后续观测进一步确认。',
-                Evidence: [
-                    '判别依据：判别间隔 decision_margin = −0.49，略偏向虚假，但接近决策边界，单凭概率不足以下定论。',
-                    '时间模态异常：三模态注意力为 文本 22% / 图像 18% / 时间 60%，由时间模态主导，传播曲线呈"深夜短时陡增后迅速回落"的爆发式衰减，符合突发谣言的扩散节律。',
-                    '结构未见明显冲突：内容↔结构冲突指数 0.34，低于 0.50 告警线，暂未发现成规模的协同操纵痕迹。',
-                    '传播稀疏告警：邻居节点数仅 7，低于稀疏阈值 10，处于早期阶段，模型已主动将置信度下调至 48%，结论存在不确定性。'
-                ],
-                Propagation_Analysis: '本案例仅聚合 7 个传播邻居节点，处于早期 / 稀疏传播阶段，统计基础有限。结构冲突指数为 0.34，处于正常区间，传播图结构与内容语义大体一致，暂未见成规模的水军协同特征。但从时间维度看，时间模态贡献异常突出（60%）：拓扑在发布后极短时间内集中冒出，随后迅速停滞，呈典型的爆发后骤减形态——这类节律在突发性谣言中很常见，但在早期阶段也可能由真实突发事件引起，二者难以仅凭传播曲线区分。鉴于样本量偏小，模型已下调置信度，结论应视为"预警"而非定论。',
-                Recommendation: '总体口径：暂不建议扩散，建议人工复核后再做判断。具体动作：① 优先核查文本事实与原始权威信源（如官方通告）；② 纳入持续监测，观察后续 30–60 分钟传播是否出现协同放大；③ 待传播充分后由模型复判，再决定是否升级处置。',
-                metrics: null, _provider: 'mock'
-            }
-        },
-        'pheme-552103': {
-            case: {
-                case_id: 'pheme-552103', dataset: 'PHEME',
-                title: '权威机构就某热点事件发布的官方说明',
-                ground_truth: 'real', source_url: 'twitter.com/official/status/552103', image_url: '',
-                publish_time: 1718300000, timestamp_mode: '真实时间', graph_nodes: 42, graph_edges: 41
-            },
-            prediction: { available: true, pred_label: 'real', fake_probability: 0.12, real_probability: 0.88, threshold: 0.5 },
-            graph: { seed: 33, nodes: 41, max_seconds: 5400, types: ['post', 'user', 'news', 'post', 'user'] },
-            metrics: {
-                fake_probability: 0.12, model_raw_score: 0.88, decision_margin: 1.99, predicted_label: 'REAL', ratio_baseline: 1.0,
-                structural_conflict_index: 0.18, structural_conflict_alert: false,
-                modality_attention: { text: 0.66, image: 0.20, time: 0.14 }, dominant_modality: 'text', modality_dominance_alert: true,
-                num_neighbors: 41, sparse_propagation: false, preliminary_risk_level: 'SAFE', confidence: 0.85
-            },
-            report: {
-                Risk_Level: '安全',
-                Conclusion: '模型判别本条新闻为「真实」，校准后假新闻风险仅 12%，量化置信度 85%。传播结构自然、与内容语义高度一致（冲突指数 0.18），判别主要由文本内容驱动，未触发任何协同操纵或图像 / 时间异常告警。',
-                Evidence: [
-                    '判别依据：判别间隔 decision_margin = +1.99（≥ 0 明显偏向真实），校准后假新闻风险仅 12%，远离决策边界，结论稳健。',
-                    '结构一致：内容↔传播图结构冲突指数仅 0.18，远低于告警线，传播行为与内容自洽，未见水军 / 异常传播图谱迹象。',
-                    '文本驱动：三模态注意力为 文本 66% / 图像 20% / 时间 14%，由文本主导且语义可信，符合权威信源发布的特征。',
-                    '传播自然且充分：41 个邻居节点呈平稳的有机扩散（早期较快、后期收敛），无集中爆发的时间簇，统计意义稳定。'
-                ],
-                Propagation_Analysis: '本案例共聚合 41 个传播邻居节点，传播规模充分。结构冲突指数为 0.18，处于正常区间，传播图结构与内容语义高度一致，未见协同操纵痕迹：拓扑演化呈"先快后稳"的有机扩散曲线，没有出现刷量账号常见的同一时刻集中爆发，也没有大量非自然的横向增强边。从模态看，判别主要由文本内容驱动（66%），异常更多需结合事实核查，但本例文本与已知权威信源一致，可信度较高。综合各维度，本条内容传播健康、证据自洽。',
-                Recommendation: '总体口径：暂未发现明显异常，可正常参考与展示。具体动作：① 保留常规抽样复核即可；② 对后续是否出现异常的二次放大保持轻量监测，无需升级处置。',
-                metrics: null, _provider: 'mock'
-            }
-        }
-    };
-
-    function buildAnalysis(caseId) {
-        const prof = PROFILES[caseId];
-        if (!prof) throw new Error('demo case not found: ' + caseId);
-        const graph = buildGraph(prof.graph);
-        const report = Object.assign({}, prof.report, { metrics: prof.metrics });
-        return {
-            case: prof.case,
-            prediction: prof.prediction,
-            statistics: {
-                display_node_count: graph.nodes.length,
-                explicit_edge_count: graph._explicit,
-                enhanced_edge_count: graph._enhanced
-            },
-            graph: graph,
-            report: report
-        };
-    }
-
-    const featured = Object.keys(PROFILES).map(function (id) {
-        const p = PROFILES[id];
-        return {
-            case_id: id, title: p.case.title, dataset: p.case.dataset,
-            timestamp_mode: p.case.timestamp_mode, pred_label: p.prediction.pred_label,
-            graph_nodes: p.case.graph_nodes, graph_edges: p.case.graph_edges
-        };
-    });
-
-    window.DEMO = {
-        featured: { cases: featured },
-        buildAnalysis: buildAnalysis,
-        has: function (caseId) { return !!PROFILES[caseId]; }
-    };
-})();
-</script>
-
-<script>
-    // 设为 true 可强制优先走真实后端；默认 false → 纯前端演示（无需后端即可展示最佳结果）。
-    const USE_LIVE_API = false;
+    // 后端接口地址（同源部署时用相对路径；如前后端分离，把下面 BASE 改成后端地址，例如 'http://172.16.110.110:8010'）
+    const API_BASE = '';
     const API = {
-        featured: '/api/v1/cases/featured',
-        analysis: id => `/api/v1/cases/${encodeURIComponent(id)}/analysis`
+        featured: `${API_BASE}/api/v1/cases/featured`,
+        analysis: id => `${API_BASE}/api/v1/cases/${encodeURIComponent(id)}/analysis`,
+        llmReport: (id, regenerate) => `${API_BASE}/api/v1/cases/${encodeURIComponent(id)}/llm-report${regenerate ? '?regenerate=1' : ''}`
     };
     const chartDom = document.getElementById('chart-dom');
     const myChart = echarts.init(chartDom);
@@ -1206,6 +985,8 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
 
     let featuredCases = [];
     let currentAnalysis = null;
+    let currentLlmReport = null;      // 当前案例的 LLM 研判报告（/llm-report 接口返回）
+    let llmReportLoading = false;
     let currentSecond = 0;
     let playTimer = null;
     let playSpeed = 1;
@@ -1237,34 +1018,10 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
     }
     document.querySelectorAll('.side-nav button').forEach(btn => btn.onclick = () => switchView(btn.dataset.view));
 
-    // 内置演示数据兜底：无后端时直接返回 window.DEMO 的数据，保证纯前端也能完整展示。
-    function demoResponse(url){
-        if (!window.DEMO) return null;
-        if (url === API.featured) return window.DEMO.featured;
-        const m = url.match(/\/cases\/([^/]+)\/analysis/);
-        if (m) {
-            const id = decodeURIComponent(m[1]);
-            if (window.DEMO.has(id)) return window.DEMO.buildAnalysis(id);
-        }
-        return null;
-    }
-
-    async function fetchJson(url){
-        if (USE_LIVE_API) {
-            try {
-                const res = await fetch(url, { cache: 'no-store' });
-                if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-                return await res.json();
-            } catch (err) {
-                const fallback = demoResponse(url);
-                if (fallback) return fallback;          // 后端不可用 → 回退内置演示数据
-                throw err;
-            }
-        }
-        // 默认：纯前端演示模式
-        const data = demoResponse(url);
-        if (data) return data;
-        throw new Error('内置演示数据中未找到：' + url);
+    async function fetchJson(url, options){
+        const res = await fetch(url, Object.assign({ cache: 'no-store' }, options || {}));
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        return await res.json();
     }
 
     async function loadFeaturedCases(){
@@ -1274,6 +1031,8 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
             featuredCases = data.cases || [];
             renderCaseTable();
             document.getElementById('overview-case-count').innerText = featuredCases.length;
+            const hr = document.getElementById('overview-highrisk-count');
+            if (hr) hr.innerText = featuredCases.filter(c => c.pred_label === 'fake').length;
             if (featuredCases.length) await selectCase(featuredCases[0].case_id, false);
             setSystemState('[ 缓存案例已就绪 ]', 'var(--success-color)');
         } catch (err) {
@@ -1312,9 +1071,10 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
             renderCurve(analysis);
             updateAnalysisText(analysis);
             scheduleGraphRender(currentSecond);
-            const rp = analysis.report || {};
-            const mm = rp.metrics || {};
-            aiLog.innerHTML = `<span class="log-head">进度报告 / Runtime Trace</span>> 已加载案例 ${analysis.case.case_id}（${analysis.case.dataset}）<br>> 接口耗时 ${(performance.now() - started).toFixed(1)} ms · 节点 ${analysis.graph.nodes.length} / 边 ${analysis.graph.edges.length}<br>> 量化研判：风险 ${percent(mm.fake_probability)} · 结构冲突 ${typeof mm.structural_conflict_index==='number'?mm.structural_conflict_index.toFixed(2):'-'} · 主导模态 ${modalityCn(mm.dominant_modality)}<br>> 拖动时间轴可在本地回看 t→t+60 传播演化。<br>> <span style="color:var(--success-color);">LLM 研判报告已生成，详见右侧「报告」标签页。</span>`;
+            const p = analysis.prediction || {};
+            aiLog.innerHTML = `<span class="log-head">进度报告 / Runtime Trace</span>> 已加载案例 ${analysis.case.case_id}（${analysis.case.dataset}）<br>> analysis 接口耗时 ${(performance.now() - started).toFixed(1)} ms · 节点 ${analysis.graph.nodes.length} / 边 ${analysis.graph.edges.length}<br>> 模型预测：${p.available ? labelCn(p.pred_label) : 'unavailable'} · Fake ${percent(p.fake_probability)}<br>> 拖动时间轴可回看传播演化。<br>> 正在调用 LLM 接口生成研判报告…`;
+            // 自动调用后端 LLM 接口生成研判报告（命中缓存则秒回）
+            loadLlmReport(analysis.case.case_id, false);
             if (jumpToAnalysis) switchView('view-analysis');
         } catch (err) {
             currentAnalysis = null;
@@ -1430,14 +1190,13 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
         const a = currentAnalysis;
         const p = a.prediction || {};
         const stats = a.statistics || {};
-        const report = a.report || {};
-        const m = report.metrics || {};
+        const report = currentLlmReport || {};     // 来自 /llm-report 接口（异步加载）
         const fakeProb = p.fake_probability;
 
-        // 研判等级优先采用 AI 报告的综合等级（高危 / 存疑 / 安全）；无报告时按概率兜底。
+        // 研判等级优先采用 LLM 报告的综合等级（高危 / 存疑 / 安全）；报告未到时按预测概率兜底。
         let level = '未知', cls = '';
-        if (report.Risk_Level) {
-            level = report.Risk_Level; cls = riskClass(report.Risk_Level);
+        if (report.risk_level) {
+            level = report.risk_level; cls = riskClass(report.risk_level);
         } else if (typeof fakeProb === 'number') {
             if (p.pred_label === 'fake') { level = '高危'; cls = 'level-high'; }
             else if (fakeProb >= 0.35) { level = '存疑'; cls = 'level-mid'; }
@@ -1448,104 +1207,120 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
         document.getElementById('verdict-level').innerText = level;
         document.getElementById('verdict-sub').innerText = `${a.case.dataset} · ${a.case.case_id}`;
 
-        // 头部两项要点：结构冲突指数 + 主导模态（直接取自量化指标）
-        const conflictEl = document.getElementById('verdict-conflict');
-        if (typeof m.structural_conflict_index === 'number') {
-            conflictEl.innerText = m.structural_conflict_index.toFixed(2) + (m.structural_conflict_alert ? ' ⚠' : '');
-            conflictEl.style.color = m.structural_conflict_alert ? 'var(--danger-color)' : 'var(--accent-color)';
-        } else {
-            conflictEl.innerText = `${stats.explicit_edge_count || 0}/${stats.enhanced_edge_count || 0}`;
-        }
-        const modEl = document.getElementById('verdict-modality');
-        if (m.dominant_modality) {
-            const pct = m.modality_attention ? m.modality_attention[m.dominant_modality] : null;
-            modEl.innerText = modalityCn(m.dominant_modality) + (typeof pct === 'number' ? ' ' + percent(pct) : '');
-            modEl.style.color = m.modality_dominance_alert ? 'var(--warning-color)' : 'var(--accent-color)';
-        } else {
-            modEl.innerText = a.graph.playback_mode === 'real_time' ? '真实时间' : a.graph.playback_mode;
-        }
+        // 头部两项要点：显式/增强边 + 传播回放模式（取自后端 analysis）
+        document.getElementById('verdict-conflict').innerText = `${stats.explicit_edge_count || 0}/${stats.enhanced_edge_count || 0}`;
+        document.getElementById('verdict-modality').innerText = a.graph.playback_mode === 'real_time' ? '真实时间' : (a.graph.playback_mode || '-');
 
-        // 结论区：优先展示 AI 研判结论，并补一行模型原始数值。
-        const concl = report.Conclusion
-            ? `<div style="margin-bottom:6px;color:#dbe7ef;">${escapeHtml(report.Conclusion)}</div>`
+        // 结论区：优先展示 LLM 研判结论，并补一行模型原始数值。
+        const concl = report.conclusion
+            ? `<div style="margin-bottom:6px;color:#dbe7ef;">${escapeHtml(report.conclusion)}</div>`
             : '';
         document.getElementById('verdict-conclusion').innerHTML =
-            `${concl}<span style="color:var(--neutral-color);font-size:11px;">模型预测 ${p.available ? labelCn(p.pred_label) : 'unavailable'} · 数据集真实标签 ${labelCn(a.case.ground_truth)} · Fake ${percent(p.fake_probability)} / Real ${percent(p.real_probability)} · 阈值 ${typeof p.threshold === 'number' ? p.threshold.toFixed(2) : 'unavailable'}</span>`;
+            `${concl}<span style="color:var(--neutral-color);font-size:11px;">模型预测 ${p.available ? labelCn(p.pred_label) : 'unavailable'} · 数据集真实标签 ${labelCn(a.case.ground_truth)} · Fake ${percent(p.fake_probability)} / Real ${percent(p.real_probability)} · 阈值 ${typeof p.threshold === 'number' ? p.threshold.toFixed(4) : 'unavailable'}</span>`;
 
-        // 判定页底部摘要：给出处置口径 + 来源标注。
-        const recShort = report.Recommendation ? escapeHtml(report.Recommendation) : '本案例预测来自离线 checkpoint 计算缓存，HTTP 请求只读取 JSON，不执行模型推理。';
+        // 判定页底部摘要：有 LLM 报告则给处置建议，否则提示去「报告」页生成。
+        const recShort = report.recommendation
+            ? escapeHtml(report.recommendation)
+            : '点击右侧「报告」标签页的「生成研判报告」，调用 LLM 接口生成处置建议。';
         document.getElementById('summary-box').innerHTML =
-            `<strong style="color:var(--accent-color);">[ AI 研判处置建议 ]</strong><br><br>${recShort}<br><br>` +
-            `<span style="color:var(--neutral-color);font-size:10px;">研判置信度 ${typeof m.confidence === 'number' ? percent(m.confidence) : 'unavailable'} · 报告来源 ${escapeHtml(report._provider || 'mock')} · 图更新耗时 ${lastRenderMs.toFixed(1)} ms</span>`;
+            `<strong style="color:var(--accent-color);">[ AI 研判处置建议 ]</strong><br><br>${recShort}` +
+            (report.model ? `<br><br><span style="color:var(--neutral-color);font-size:10px;">报告来源 ${escapeHtml(report.provider || report.model)} · 用时 ${report.latency_ms != null ? report.latency_ms + ' ms' : '-'}</span>` : '');
     }
 
-    // —— 详细 AI 研判报告：渲染到「报告」标签页 ——
-    function renderReport(analysis){
+    // —— LLM 研判报告：渲染到「报告」标签页（对接 POST /llm-report 的结构化 JSON）——
+    function renderLlmReportTab(){
         const el = document.getElementById('tab-report');
         if (!el) return;
-        const report = (analysis && analysis.report) || {};
-        const m = report.metrics || {};
-        if (!report.Risk_Level && !report.Conclusion) {
-            el.innerHTML = '<div class="ai-summary">请选择案例后生成详细 AI 研判报告。</div>';
+        const caseId = currentAnalysis && currentAnalysis.case ? currentAnalysis.case.case_id : null;
+        const regenBtn = caseId
+            ? `<button class="header-btn" onclick="loadLlmReport('${escapeHtml(caseId)}', true)">重新生成</button>`
+            : '';
+
+        // 加载中
+        if (llmReportLoading) {
+            el.innerHTML = `<div class="ai-summary">正在调用 LLM 生成研判报告，请稍候…（首次生成约需数秒）</div>`;
             return;
         }
-        const evidence = Array.isArray(report.Evidence) ? report.Evidence : (report.Evidence ? [report.Evidence] : []);
-        const attn = m.modality_attention || {};
-        const modColor = { text: '#00d4ff', image: '#ff4d4f', time: '#faad14' };
-        const modalityBars = ['text', 'image', 'time'].filter(k => k in attn).map(k => {
-            const v = attn[k] || 0;
-            return `<div class="modality-row"><span>${modalityCn(k)}</span>`
-                + `<div class="modality-track"><div class="modality-fill" style="width:${(v*100).toFixed(0)}%;background:${modColor[k]};box-shadow:0 0 6px ${modColor[k]};"></div></div>`
-                + `<span style="text-align:right;color:${k===m.dominant_modality?modColor[k]:'#a0b0ba'};">${percent(v)}</span></div>`;
-        }).join('');
+        const r = currentLlmReport;
+        // 尚未生成
+        if (!r) {
+            el.innerHTML = `<div class="report-doc">
+                <div class="ai-summary">本页对接后端 <code>POST /api/v1/cases/{case_id}/llm-report</code> 接口，由 LLM 生成结构化研判报告。</div>
+                ${caseId ? `<button class="header-btn" style="align-self:flex-start;" onclick="loadLlmReport('${escapeHtml(caseId)}', false)">生成研判报告</button>` : ''}
+            </div>`;
+            return;
+        }
+        // 出错
+        if (r._frontend_error) {
+            el.innerHTML = `<div class="report-doc">
+                <div class="ai-summary" style="border-color:rgba(255,77,79,.4);color:#ffb4b4;">研判报告生成失败：${escapeHtml(r._frontend_error)}</div>
+                ${caseId ? `<button class="header-btn" style="align-self:flex-start;" onclick="loadLlmReport('${escapeHtml(caseId)}', false)">重试</button>` : ''}
+            </div>`;
+            return;
+        }
 
-        const fakeCls = (m.fake_probability >= 0.65) ? 'danger' : (m.fake_probability >= 0.35) ? 'warn' : 'ok';
-        const conflictCls = m.structural_conflict_alert ? 'danger' : 'ok';
+        const sections = [
+            ['核心结论', r.conclusion, false],
+            ['新闻内容分析', r.content_analysis, false],
+            ['传播结构分析', r.propagation_analysis, false],
+            ['证据 / 来源分析', r.evidence_analysis, false],
+            ['风险总结', r.risk_summary, false],
+            ['处置 / 核查建议', r.recommendation, true],
+        ];
+        const blocks = sections.filter(s => s[1]).map(([label, body, isRec]) =>
+            `<div class="report-block${isRec ? ' report-rec' : ''}">
+                <div class="rb-label">${label}</div>
+                <div class="rb-body">${escapeHtml(body).replace(/\n/g, '<br>')}</div>
+            </div>`).join('');
+
+        const meta = [
+            r.model ? `模型 ${escapeHtml(r.model)}` : '',
+            r.provider ? `来源 ${escapeHtml(r.provider)}` : '',
+            r.latency_ms != null ? `用时 ${r.latency_ms} ms` : '',
+            r.cached ? '缓存命中' : '实时生成',
+            r.generated_at ? `生成于 ${escapeHtml(r.generated_at)}` : '',
+        ].filter(Boolean).join(' · ');
 
         el.innerHTML = `
             <div class="report-doc">
                 <div class="report-head">
-                    <div><div class="rh-title">AI 智能研判报告</div><div class="rh-prov">来源 ${escapeHtml(report._provider || 'mock')} · TGRFN + LLM 解释层</div></div>
-                    <div class="report-risk-pill ${riskPillClass(report.Risk_Level)}">${escapeHtml(report.Risk_Level || '-')}</div>
+                    <div><div class="rh-title">AI 智能研判报告</div><div class="rh-prov">TGRFN 预测 + LLM 解释层</div></div>
+                    <div class="report-risk-pill ${riskPillClass(r.risk_level)}">${escapeHtml(r.risk_level || '-')}</div>
                 </div>
-
-                <div class="report-block">
-                    <div class="rb-label">核心结论</div>
-                    <div class="rb-body">${escapeHtml(report.Conclusion || '')}</div>
+                ${blocks}
+                <div class="report-disclaimer">说明：本报告为 TGRFN 模型预测结果经 LLM 解释生成的「模型预测 / 传播风险研判」，作为内容安全审核辅助，不替代权威事实核查与人工处置。</div>
+                <div class="report-disclaimer">${meta}</div>
+                <div style="display:flex;gap:8px;">
+                    ${regenBtn}
+                    <button class="header-btn" onclick="exportReport()">导出 PDF 报告</button>
                 </div>
-
-                <div class="report-block">
-                    <div class="rb-label">关键证据 · 共 ${evidence.length} 条</div>
-                    <ul class="report-evidence">${evidence.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>
-                </div>
-
-                <div class="report-block">
-                    <div class="rb-label">传播 / 结构分析</div>
-                    <div class="rb-body">${escapeHtml(report.Propagation_Analysis || '')}</div>
-                </div>
-
-                <div class="report-block report-rec">
-                    <div class="rb-label">处置建议</div>
-                    <div class="rb-body">${escapeHtml(report.Recommendation || '')}</div>
-                </div>
-
-                <div class="report-block">
-                    <div class="rb-label">量化指标快照</div>
-                    <div class="report-metrics" style="margin-bottom:10px;">
-                        <div class="report-metric"><div class="m-k">假新闻风险 (校准)</div><div class="m-v ${fakeCls}">${percent(m.fake_probability)}</div></div>
-                        <div class="report-metric"><div class="m-k">量化置信度</div><div class="m-v">${percent(m.confidence)}</div></div>
-                        <div class="report-metric"><div class="m-k">结构冲突指数</div><div class="m-v ${conflictCls}">${typeof m.structural_conflict_index==='number'?m.structural_conflict_index.toFixed(2):'-'}</div></div>
-                        <div class="report-metric"><div class="m-k">判别间隔 margin</div><div class="m-v ${m.decision_margin<0?'danger':'ok'}">${typeof m.decision_margin==='number'?m.decision_margin.toFixed(2):'-'}</div></div>
-                        <div class="report-metric"><div class="m-k">传播邻居数</div><div class="m-v ${m.sparse_propagation?'warn':''}">${m.num_neighbors!=null?m.num_neighbors:'-'}</div></div>
-                        <div class="report-metric"><div class="m-k">模型判别</div><div class="m-v ${m.predicted_label==='FAKE'?'danger':'ok'}">${m.predicted_label||'-'}</div></div>
-                    </div>
-                    <div class="rb-label" style="color:#a0b0ba;">模态注意力贡献</div>
-                    <div class="modality-bars">${modalityBars || '<span style="font-size:10px;color:#8899a6;">无模态数据</span>'}</div>
-                </div>
-
-                <div class="report-disclaimer">说明：本报告为 TGRFN 模型量化指标经 LLM 解释层生成的「模型预测 / 传播风险研判」，作为内容安全审核辅助，不替代权威事实核查与人工处置。</div>
-                <button class="header-btn" style="align-self:flex-start;" onclick="exportReport()">导出 PDF 报告</button>
             </div>`;
+    }
+
+    // 调用后端 LLM 接口；regenerate=true 时强制重新生成（忽略缓存）
+    async function loadLlmReport(caseId, regenerate){
+        if (!currentAnalysis || currentAnalysis.case.case_id !== caseId) return;
+        llmReportLoading = true;
+        currentLlmReport = null;
+        renderLlmReportTab();
+        try {
+            const data = await fetchJson(API.llmReport(caseId, regenerate), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ regenerate: !!regenerate })
+            });
+            // 后端返回 { code, report:{...} }；兼容直接返回 report 的情况
+            currentLlmReport = (data && data.report) ? data.report : data;
+        } catch (err) {
+            currentLlmReport = { _frontend_error: err.message };
+        } finally {
+            llmReportLoading = false;
+            if (currentAnalysis && currentAnalysis.case.case_id === caseId) {
+                renderLlmReportTab();
+                renderVerdict();          // 用报告里的 risk_level / conclusion / recommendation 刷新判定页
+                fillPrintReport();
+            }
+        }
     }
 
     function renderCurve(analysis){
@@ -1576,17 +1351,20 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
     }
 
     function updateAnalysisText(analysis){
-        sysStatus.innerText = '[ AI 研判报告已生成 ]';
+        sysStatus.innerText = '[ 案例已加载 ]';
         sysStatus.style.color = 'var(--success-color)';
-        renderReport(analysis);
+        currentLlmReport = null;
+        llmReportLoading = false;
+        renderLlmReportTab();
     }
-    function requestLlmReport(caseId){
-        return Promise.resolve({ available: false, case_id: caseId, message: '等待生成研判报告' });
-    }
+    // 兼容旧调用名：触发 LLM 研判报告生成
+    function requestLlmReport(caseId, regenerate){ return loadLlmReport(caseId, !!regenerate); }
 
     function clearAnalysisState(message){
         stopPlayback();
         currentAnalysis = null;
+        currentLlmReport = null;
+        llmReportLoading = false;
         currentSecond = 0;
         myChart.clear(); curveChart.clear(); overviewChart.clear();
         document.getElementById('source-title').innerText = '未选择案例';
@@ -1602,6 +1380,7 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
         document.getElementById('pred-label').innerText = '-';
         document.getElementById('summary-box').innerText = message || '等待接口返回。';
         aiLog.innerHTML = `<span class="log-head">进度报告 / Runtime Trace</span>> ${escapeHtml(message || '等待接口返回。')}`;
+        renderLlmReportTab();
     }
     function setSystemState(text, color){ sysStatus.innerText = text; sysStatus.style.color = color; }
     function fillPrintReport(){
@@ -1614,19 +1393,22 @@ GET  /api/v1/cases/{case_id}/graph?minute=40</div>
         document.getElementById('print-window').innerText = fmtTime(currentSecond);
         document.getElementById('print-pred').innerText = p.available ? labelCn(p.pred_label) : 'unavailable';
         document.getElementById('print-prob').innerText = percent(p.fake_probability);
-        const report = currentAnalysis.report || {};
+        const r = currentLlmReport;
         const body = document.getElementById('print-ai-body');
         if (body) {
-            if (report.Risk_Level || report.Conclusion) {
-                const evidence = Array.isArray(report.Evidence) ? report.Evidence : (report.Evidence ? [report.Evidence] : []);
+            if (r && !r._frontend_error && (r.risk_level || r.conclusion)) {
+                const row = (label, v) => v ? `<p><strong>${label}：</strong>${escapeHtml(v).replace(/\n/g, '<br>')}</p>` : '';
                 body.innerHTML =
-                    `<p><strong>综合风险等级：</strong>${escapeHtml(report.Risk_Level || '-')}</p>` +
-                    `<p><strong>核心结论：</strong>${escapeHtml(report.Conclusion || '')}</p>` +
-                    `<p><strong>关键证据：</strong></p><ol style="margin:4px 0 8px 18px;padding:0;">${evidence.map(e => `<li style="margin-bottom:4px;">${escapeHtml(e)}</li>`).join('')}</ol>` +
-                    `<p><strong>传播 / 结构分析：</strong>${escapeHtml(report.Propagation_Analysis || '')}</p>` +
-                    `<p><strong>处置建议：</strong>${escapeHtml(report.Recommendation || '')}</p>`;
+                    row('综合风险等级', r.risk_level) +
+                    row('核心结论', r.conclusion) +
+                    row('新闻内容分析', r.content_analysis) +
+                    row('传播结构分析', r.propagation_analysis) +
+                    row('证据 / 来源分析', r.evidence_analysis) +
+                    row('风险总结', r.risk_summary) +
+                    row('处置 / 核查建议', r.recommendation) +
+                    (r.model ? `<p style="color:#666;font-size:12px;">报告来源 ${escapeHtml(r.provider || r.model)} · 生成于 ${escapeHtml(r.generated_at || '')}</p>` : '');
             } else {
-                body.innerHTML = '<p>暂无 AI 研判报告。</p>';
+                body.innerHTML = '<p>暂无 AI 研判报告（请先在「报告」标签页生成）。</p>';
             }
         }
     }

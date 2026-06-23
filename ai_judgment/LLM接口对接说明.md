@@ -93,9 +93,16 @@ export TGRFN_REPORT_CACHE_DIR=./_report_cache   # 报告缓存目录(可选)
 
 ---
 
-## 3. 前端那一处怎么改（队友的 `requestLlmReport` 直接替换）
+## 3. 前端（本仓库 `ai_judgment/前端.html` 已改好，无需再动）
 
-前端预留的 `requestLlmReport(caseId)` 改成真正请求接口即可：
+本仓库的 `前端.html` 已经：① 删除内置演示数据，只走真实后端接口；② 选中案例时自动调用
+`POST /api/v1/cases/{id}/llm-report` 生成研判报告（命中缓存秒回），并在「报告」标签页渲染
+6 段结构化内容 + 风险等级 + 模型/耗时/生成时间，附「重新生成」「导出 PDF」按钮；
+③ 判定页与 PDF 导出同步用上报告里的结论与处置建议。
+> 若前后端**分离部署**，把 `前端.html` 顶部的 `const API_BASE = ''` 改成后端地址
+> （例如 `'http://172.16.110.110:8010'`）即可。
+
+如果队友用的是他自己那份前端，核心就是把预留的 `requestLlmReport(caseId)` 改成真正请求接口：
 ```javascript
 async function requestLlmReport(caseId, regenerate = false) {
   const url = `/api/v1/cases/${encodeURIComponent(caseId)}/llm-report` + (regenerate ? '?regenerate=1' : '');
